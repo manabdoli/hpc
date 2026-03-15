@@ -47,3 +47,8 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+# MA: ignore HTMLs unless otherwise specified
+*_files/*
+*.html
+.DS_Store
