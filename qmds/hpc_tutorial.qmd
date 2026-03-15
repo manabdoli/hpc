@@ -1,0 +1,791 @@
+---
+title: "HPC Cluster: Getting Started Guide"
+subtitle: "A Practical Tutorial for New Users"
+author: "Mansour Abdoli"
+ai.disclousure: "Claude is used to generate the inisital draft"
+date: "March 13, 2026"
+format:
+  html:
+    toc: true
+    toc-depth: 3
+    toc-title: "Contents"
+    theme: cosmo
+    code-copy: true
+    code-fold: false
+    highlight-style: github
+    number-sections: true
+  pdf:
+    toc: true
+    toc-depth: 3
+    number-sections: true
+    colorlinks: true
+    geometry: margin=1in
+execute:
+  eval: false
+  echo: true
+---
+
+# Overview
+
+This guide walks you through every step needed to access and use the HPC (High-Performance Computing) cluster — from requesting an account to running your first parallel job in MATLAB, R, or Python.
+
+::: {.callout-note}
+Commands shown in this tutorial use `<angle_brackets>` to indicate values you must replace with your own (e.g., replace `<your_username>` with your actual university NetID).
+:::
+
+---
+
+# Creating an Account
+
+Account creation requires a request to IT. You cannot self-register.
+
+**Steps:**
+
+1. Email the HPC support helpdesk at `hpc-support@university.edu`
+2. Include in your request:
+   - Your full name and university NetID
+   - Your department and PI (supervisor) name
+   - A brief description of your intended use (e.g., "running Python ML jobs for my thesis")
+   - Estimated storage needs (if known)
+3. IT will provision your account within 2–5 business days and email you with:
+   - Your cluster hostname (e.g., `hpc.university.edu`)
+   - Your default storage quota
+   - A link to the cluster usage policy (please read it!)
+
+::: {.callout-important}
+Your HPC account is separate from your regular university login. You will authenticate using SSH keys (see next section) rather than a password.
+:::
+
+---
+
+# Setting Up SSH Keys
+
+SSH keys replace passwords with a cryptographic key pair: a **private key** (stays on your computer, never share it) and a **public key** (uploaded to the cluster).
+
+## Generate an SSH Key Pair
+
+::: {.panel-tabset}
+
+### Mac / Linux
+
+Open Terminal and run:
+
+```bash
+ssh-keygen -t ed25519 -C "<your_email@university.edu>"
+```
+
+When prompted:
+
+- **File location**: Press `Enter` to accept the default (`~/.ssh/id_ed25519`)
+- **Passphrase**: Enter a strong passphrase (recommended) — this protects your private key
+
+This creates two files:
+
+| File | Description |
+|---|---|
+| `~/.ssh/id_ed25519` | Your **private** key — keep this secret |
+| `~/.ssh/id_ed25519.pub` | Your **public** key — this gets shared |
+
+### Windows (PowerShell)
+
+Open PowerShell and run:
+
+```powershell
+ssh-keygen -t ed25519 -C "<your_email@university.edu>"
+```
+
+Accept the default location (`C:\Users\<you>\.ssh\id_ed25519`) and set a passphrase.
+
+::: {.callout-tip}
+If `ssh-keygen` is not found, enable the OpenSSH client:  
+**Settings → Apps → Optional Features → Add a feature → OpenSSH Client**
+:::
+
+:::
+
+## Copy Your Public Key to the Cluster
+
+::: {.panel-tabset}
+
+### Mac / Linux
+
+```bash
+ssh-copy-id -i ~/.ssh/id_ed25519.pub <your_username>@hpc.university.edu
+```
+
+If `ssh-copy-id` is unavailable, do it manually:
+
+```bash
+cat ~/.ssh/id_ed25519.pub | ssh <your_username>@hpc.university.edu \
+  "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+### Windows (PowerShell)
+
+```powershell
+type $env:USERPROFILE\.ssh\id_ed25519.pub | ssh <your_username>@hpc.university.edu `
+  "mkdir -p ~/.ssh && cat >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+```
+
+:::
+
+## Test Your Connection
+
+```bash
+ssh <your_username>@hpc.university.edu
+```
+
+If successful, you will see the cluster's welcome banner and a shell prompt like:
+
+```
+[<your_username>@login01 ~]$
+```
+
+---
+
+# Terminal-Based Access
+
+## Getting Connected
+
+### Mac / Linux
+
+Mac and Linux have a built-in SSH client in the **Terminal** app (or iTerm2, Alacritty, etc.).
+
+```bash
+ssh <your_username>@hpc.university.edu
+```
+
+**Optional: Create an SSH config alias** so you can just type `ssh hpc`:
+
+```bash
+# Add to ~/.ssh/config (create the file if it doesn't exist)
+Host hpc
+    HostName hpc.university.edu
+    User <your_username>
+    IdentityFile ~/.ssh/id_ed25519
+    ServerAliveInterval 60
+```
+
+Then connect with simply:
+
+```bash
+ssh hpc
+```
+
+### Windows
+
+**Option 1 — Built-in OpenSSH (Windows 10/11, recommended):**
+
+Open PowerShell or Command Prompt:
+
+```powershell
+ssh <your_username>@hpc.university.edu
+```
+
+**Option 2 — PuTTY:**
+
+1. Download PuTTY from [putty.org](https://www.putty.org)
+2. In the PuTTY configuration:
+   - **Host Name**: `hpc.university.edu`
+   - **Connection → SSH → Auth → Credentials**: Browse to your `.ppk` private key  
+     *(Use PuTTYgen to convert your `id_ed25519` file to `.ppk` format)*
+3. Click **Open**
+
+::: {.callout-tip}
+Save your PuTTY session so you don't have to re-enter settings each time.
+:::
+
+---
+
+## Transferring Data via Terminal
+
+### Mac / Linux — Using `scp`
+
+Copy a single file **to** the cluster:
+
+```bash
+scp /path/to/local/file.txt <your_username>@hpc.university.edu:~/data/
+```
+
+Copy a directory **to** the cluster (recursive):
+
+```bash
+scp -r /path/to/local/folder/ <your_username>@hpc.university.edu:~/data/
+```
+
+Copy a file **from** the cluster to your local machine:
+
+```bash
+scp <your_username>@hpc.university.edu:~/results/output.csv ~/Downloads/
+```
+
+### Mac / Linux — Using `rsync` (recommended for large transfers)
+
+`rsync` is faster than `scp` for large or repeated transfers — it only copies changed files.
+
+```bash
+# Sync local folder to cluster
+rsync -avz --progress /path/to/local/folder/ <your_username>@hpc.university.edu:~/data/
+
+# Sync cluster results back to local machine
+rsync -avz --progress <your_username>@hpc.university.edu:~/results/ ~/local_results/
+```
+
+| Flag | Meaning |
+|---|---|
+| `-a` | Archive mode (preserves permissions, timestamps) |
+| `-v` | Verbose output |
+| `-z` | Compress during transfer |
+| `--progress` | Show transfer progress |
+
+### Windows — Using `scp` (PowerShell)
+
+```powershell
+# Upload a file
+scp C:\Users\<you>\data\file.txt <your_username>@hpc.university.edu:~/data/
+
+# Download a file
+scp <your_username>@hpc.university.edu:~/results/output.csv C:\Users\<you>\Downloads\
+```
+
+---
+
+## Scheduling Jobs with SLURM
+
+The cluster uses **SLURM** (Simple Linux Utility for Resource Management) to schedule and manage jobs. You do not run computations directly on the login node — you submit job scripts that SLURM queues and executes on compute nodes.
+
+### Key SLURM Commands
+
+| Command | Description |
+|---|---|
+| `sbatch job.sh` | Submit a job script |
+| `squeue -u <your_username>` | View your queued/running jobs |
+| `scancel <job_id>` | Cancel a job |
+| `sinfo` | View available partitions and node status |
+| `sacct -j <job_id>` | View accounting info for a completed job |
+| `seff <job_id>` | View efficiency report for a completed job |
+
+### SLURM Script Structure
+
+Every SLURM job script is a Bash script with `#SBATCH` directives at the top:
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=my_job          # Job name (shows in squeue)
+#SBATCH --partition=general        # Partition/queue to submit to
+#SBATCH --nodes=1                  # Number of nodes
+#SBATCH --ntasks=1                 # Number of tasks (processes)
+#SBATCH --cpus-per-task=4          # CPU cores per task
+#SBATCH --mem=8G                   # Total memory (e.g., 8 GB)
+#SBATCH --time=02:00:00            # Wall-clock time limit (HH:MM:SS)
+#SBATCH --output=logs/%j_out.txt   # Standard output file (%j = job ID)
+#SBATCH --error=logs/%j_err.txt    # Standard error file
+#SBATCH --mail-type=END,FAIL       # Email on job end or failure
+#SBATCH --mail-user=<your_email>   # Your email address
+
+# --- Your commands below ---
+```
+
+::: {.callout-warning}
+Always create the `logs/` directory before submitting: `mkdir -p logs`
+:::
+
+---
+
+### Running MATLAB Jobs
+
+**Interactive test (before submitting):**
+
+```bash
+# Start an interactive session on a compute node
+srun --ntasks=1 --cpus-per-task=2 --mem=4G --time=00:30:00 --pty bash
+
+# Load MATLAB module
+module load matlab
+
+# Launch MATLAB (no display)
+matlab -nodisplay -nosplash
+```
+
+**Batch job script — `run_matlab.sh`:**
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=matlab_job
+#SBATCH --partition=general
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+#SBATCH --time=04:00:00
+#SBATCH --output=logs/%j_out.txt
+#SBATCH --error=logs/%j_err.txt
+
+# Load MATLAB
+module load matlab
+
+# Run MATLAB script (no GUI)
+matlab -nodisplay -nosplash -r "run('my_script.m'); exit"
+```
+
+**Submit the job:**
+
+```bash
+mkdir -p logs
+sbatch run_matlab.sh
+```
+
+**Parallel MATLAB with `parpool`** — in your `.m` script:
+
+```matlab
+% Use the number of CPUs requested in #SBATCH --cpus-per-task
+parpool('local', str2num(getenv('SLURM_CPUS_PER_TASK')));
+
+parfor i = 1:100
+    result(i) = heavy_computation(i);
+end
+
+delete(gcp);
+```
+
+---
+
+### Running R Jobs
+
+**Batch job script — `run_r.sh`:**
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=r_job
+#SBATCH --partition=general
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=8G
+#SBATCH --time=02:00:00
+#SBATCH --output=logs/%j_out.txt
+#SBATCH --error=logs/%j_err.txt
+
+# Load R module
+module load R
+
+# Run R script
+Rscript my_analysis.R
+```
+
+**Parallel R with `parallel` package** — in your `.R` script:
+
+```r
+library(parallel)
+
+# Detect cores allocated by SLURM
+n_cores <- as.integer(Sys.getenv("SLURM_CPUS_PER_TASK", unset = 1))
+cat("Using", n_cores, "cores\n")
+
+cl <- makeCluster(n_cores)
+
+results <- parLapply(cl, 1:100, function(i) {
+  heavy_computation(i)
+})
+
+stopCluster(cl)
+```
+
+**Installing R packages on the cluster:**
+
+```bash
+# Start R interactively
+module load R
+R
+
+# Inside R, install to your personal library
+install.packages("ggplot2", lib = "~/R/library")
+```
+
+::: {.callout-tip}
+Add `export R_LIBS_USER=~/R/library` to your `~/.bashrc` so R always finds your personal packages.
+:::
+
+---
+
+### Running Python Jobs
+
+**Recommended: use a Conda environment for managing packages.**
+
+**Set up Conda environment (one-time):**
+
+```bash
+module load anaconda   # or: module load miniconda
+
+# Create environment
+conda create -n myenv python=3.11 numpy pandas scikit-learn -y
+
+# Activate
+conda activate myenv
+```
+
+**Batch job script — `run_python.sh`:**
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=python_job
+#SBATCH --partition=general
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --mem=16G
+#SBATCH --time=06:00:00
+#SBATCH --output=logs/%j_out.txt
+#SBATCH --error=logs/%j_err.txt
+
+# Load Anaconda and activate environment
+module load anaconda
+conda activate myenv
+
+# Run Python script
+python my_script.py
+```
+
+**GPU job — add these directives for GPU-enabled partitions:**
+
+```bash
+#SBATCH --partition=gpu
+#SBATCH --gres=gpu:1               # Request 1 GPU
+#SBATCH --cpus-per-task=4
+#SBATCH --mem=32G
+```
+
+**Parallel Python with `multiprocessing`:**
+
+```python
+import multiprocessing
+import os
+
+n_cores = int(os.environ.get("SLURM_CPUS_PER_TASK", 1))
+print(f"Using {n_cores} cores")
+
+def heavy_computation(i):
+    # your work here
+    return i ** 2
+
+with multiprocessing.Pool(n_cores) as pool:
+    results = pool.map(heavy_computation, range(100))
+```
+
+---
+
+### Job Arrays (Running Many Similar Jobs)
+
+Job arrays let you run the same script hundreds of times with different inputs — ideal for parameter sweeps.
+
+```bash
+#!/bin/bash
+#SBATCH --job-name=array_job
+#SBATCH --array=1-50              # Run 50 tasks (indices 1–50)
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=2
+#SBATCH --mem=4G
+#SBATCH --time=01:00:00
+#SBATCH --output=logs/%A_%a_out.txt   # %A = array job ID, %a = task index
+
+module load python
+conda activate myenv
+
+# Use $SLURM_ARRAY_TASK_ID to select input
+python my_script.py --input data/sample_${SLURM_ARRAY_TASK_ID}.csv
+```
+
+---
+
+# Connecting via Apps (GUI Clients)
+
+GUI-based SSH clients make it easier to browse files and open a terminal without memorising commands.
+
+## Mac
+
+### Terminal (built-in)
+
+Terminal.app is sufficient for most users. For a better experience, install **iTerm2** from [iterm2.com](https://iterm2.com) — it supports split panes, profiles, and session persistence.
+
+### Visual Studio Code (Recommended)
+
+VS Code's **Remote - SSH** extension lets you edit files on the cluster as if they were local.
+
+1. Install [VS Code](https://code.visualstudio.com)
+2. Install the **Remote - SSH** extension (`Cmd+Shift+X` → search "Remote - SSH")
+3. Press `Cmd+Shift+P` → **Remote-SSH: Connect to Host** → `<your_username>@hpc.university.edu`
+4. VS Code will install a server on the cluster automatically
+
+You can now open folders, edit files, and open an integrated terminal — all on the cluster.
+
+## Linux
+
+### Terminal (built-in)
+
+Any terminal emulator works. Use the SSH command directly:
+
+```bash
+ssh <your_username>@hpc.university.edu
+```
+
+### Visual Studio Code
+
+Same Remote - SSH setup as Mac above. Install VS Code from [code.visualstudio.com](https://code.visualstudio.com) or via your package manager:
+
+```bash
+# Ubuntu/Debian
+sudo snap install code --classic
+```
+
+## Windows
+
+### Windows Terminal + OpenSSH (Recommended)
+
+Install **Windows Terminal** from the Microsoft Store for a much better terminal experience. Then connect using:
+
+```powershell
+ssh <your_username>@hpc.university.edu
+```
+
+### PuTTY
+
+A classic Windows SSH client. Download from [putty.org](https://www.putty.org).
+
+1. **Host Name**: `hpc.university.edu`
+2. **Connection → SSH → Auth → Credentials**: load your `.ppk` private key
+3. Save the session for future use
+
+### MobaXterm (Windows — highly recommended)
+
+[MobaXterm](https://mobaxterm.mobatek.net) combines SSH, file transfer (SFTP), and X11 forwarding (for GUI apps) in one tool.
+
+1. Download MobaXterm Home Edition (free)
+2. Click **Session → SSH**
+3. Fill in Remote Host, username, and your private key path
+4. MobaXterm automatically opens an SFTP file browser alongside your terminal
+
+### Visual Studio Code
+
+Same Remote - SSH workflow as Mac/Linux. Works identically on Windows.
+
+---
+
+# Transferring Data via Apps (GUI)
+
+## Mac
+
+### Cyberduck
+
+[Cyberduck](https://cyberduck.io) is a free, user-friendly SFTP client for Mac.
+
+1. Click **Open Connection**
+2. Select **SFTP (SSH File Transfer Protocol)**
+3. **Server**: `hpc.university.edu`
+4. **Username**: your cluster username
+5. **SSH Private Key**: browse to `~/.ssh/id_ed25519`
+6. Click **Connect**
+
+You can now drag-and-drop files between your Mac and the cluster.
+
+### Filezilla
+
+[FileZilla](https://filezilla-project.org) is a cross-platform SFTP client.
+
+1. Open **File → Site Manager → New Site**
+2. **Protocol**: SFTP
+3. **Host**: `hpc.university.edu`
+4. **Logon Type**: Key file → browse to `~/.ssh/id_ed25519`
+5. Click **Connect**
+
+### Visual Studio Code (Remote - SSH)
+
+Once connected via Remote - SSH, you can right-click any file in the Explorer panel and choose **Download** or drag files between the VS Code Explorer and your local Finder.
+
+## Linux
+
+### Filezilla
+
+Same setup as Mac above. Install via:
+
+```bash
+sudo apt install filezilla   # Ubuntu/Debian
+sudo dnf install filezilla   # Fedora
+```
+
+### Thunar / Nautilus (File Manager SFTP)
+
+Most Linux file managers support SFTP directly:
+
+- **Nautilus** (GNOME): press `Ctrl+L`, type `sftp://<your_username>@hpc.university.edu`
+- **Thunar** (XFCE): same — press `Ctrl+L` and enter the SFTP URL
+
+## Windows
+
+### MobaXterm
+
+MobaXterm automatically opens an **SFTP panel** on the left when you connect via SSH. You can drag-and-drop files between the panel and Windows Explorer.
+
+### WinSCP
+
+[WinSCP](https://winscp.net) is a dedicated SFTP/SCP client for Windows.
+
+1. **File Protocol**: SFTP
+2. **Host name**: `hpc.university.edu`
+3. **User name**: your cluster username
+4. Click **Advanced → SSH → Authentication** → load your private key (`.ppk` format via PuTTYgen)
+5. Click **Login**
+
+### Cyberduck (Windows)
+
+[Cyberduck](https://cyberduck.io) also works on Windows — same setup as the Mac instructions above.
+
+### Filezilla (Windows)
+
+Same setup as Mac/Linux. Download the Windows installer from [filezilla-project.org](https://filezilla-project.org).
+
+---
+
+# Storage and Quotas
+
+Most HPC systems provide several storage locations with different purposes and performance characteristics:
+
+| Location | Path | Purpose | Backed Up? | Notes |
+|---|---|---|---|---|
+| Home | `~/` or `/home/<user>` | Scripts, code, small files | Yes | Quota applies (e.g., 50 GB) |
+| Scratch | `/scratch/<user>` | Large temporary data | **No** | High-speed; purged periodically |
+| Project | `/project/<group>` | Shared group storage | Yes | Ask PI for access |
+
+::: {.callout-warning}
+**Do not store large datasets in your home directory.** Use `/scratch` for job I/O and move important results to `/project` or your local machine when done.
+:::
+
+Check your current usage:
+
+```bash
+# Home directory quota
+quota -s
+
+# Scratch usage
+du -sh /scratch/<your_username>
+```
+
+---
+
+# Environment Modules
+
+The cluster uses **modules** to manage software versions. You must load a module before using software.
+
+```bash
+# List all available modules
+module avail
+
+# Search for a specific software
+module avail python
+module avail matlab
+
+# Load a module
+module load python/3.11
+module load matlab/R2024a
+
+# See currently loaded modules
+module list
+
+# Unload a module
+module unload python/3.11
+
+# Unload all modules
+module purge
+```
+
+::: {.callout-tip}
+Add frequently used `module load` commands to your `~/.bashrc` so they load automatically at login:
+
+```bash
+echo "module load anaconda" >> ~/.bashrc
+```
+:::
+
+---
+
+# Monitoring and Debugging Jobs
+
+## Check Job Status
+
+```bash
+# Your current jobs
+squeue -u <your_username>
+
+# All jobs on cluster
+squeue
+
+# Detailed info on a specific job
+scontrol show job <job_id>
+```
+
+## View Job Output in Real Time
+
+```bash
+# Follow output as it writes (like tail -f)
+tail -f logs/<job_id>_out.txt
+```
+
+## Job Efficiency After Completion
+
+```bash
+# Summary of CPU, memory, and time usage
+seff <job_id>
+
+# Detailed accounting
+sacct -j <job_id> --format=JobID,JobName,State,Elapsed,CPUTime,MaxRSS
+```
+
+::: {.callout-tip}
+**Optimise your resource requests.** If `seff` shows you used only 20% of requested memory, reduce `--mem` in future jobs. Over-requesting resources means longer queue waits.
+:::
+
+## Common Issues
+
+| Problem | Likely Cause | Fix |
+|---|---|---|
+| Job stays in `PENDING` | Waiting for resources | Check `squeue` reason column; try a smaller resource request |
+| `module: command not found` | Module system not loaded | Source your `.bashrc`: `source ~/.bashrc` |
+| `Out of memory` error | `--mem` too low | Increase `--mem` and resubmit |
+| Job cancelled after time limit | `--time` too short | Profile locally first; increase time limit |
+| `Permission denied` on SSH | Wrong key or username | Verify `~/.ssh/authorized_keys` on cluster |
+
+---
+
+# Best Practices
+
+1. **Always test on a small dataset** before submitting a full job. Use an interactive session (`srun --pty bash`) to verify your script works.
+
+2. **Use scratch for I/O-intensive jobs.** Reading/writing to `/scratch` is much faster than your home directory.
+
+3. **Set realistic resource requests.** Overestimate slightly, but don't request 32 cores if your job won't use them — this wastes cluster resources and increases your queue wait time.
+
+4. **Clean up scratch regularly.** Scratch space is not backed up and is often auto-purged after 30–90 days.
+
+5. **Version-control your scripts.** Keep your job scripts and analysis code in a Git repository.
+
+6. **Check the cluster news page or mailing list** before submitting large jobs — maintenance windows and node outages are announced there.
+
+---
+
+# Getting Help
+
+| Resource | Details |
+|---|---|
+| HPC helpdesk | `hpc-support@university.edu` |
+| User documentation | `https://hpc.university.edu/docs` |
+| SLURM documentation | `https://slurm.schedmd.com/documentation.html` |
+| Office hours | Fridays 2–4 PM, Engineering Building Room 210 |
+
+When emailing support, always include:
+
+- Your **job ID** (`squeue` or `sacct` output)
+- The **error message** (paste the contents of your `_err.txt` log file)
+- The **job script** you submitted
+
+---
+
+*Tutorial last updated: `r Sys.Date()`*
